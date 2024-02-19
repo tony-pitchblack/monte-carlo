@@ -1,12 +1,15 @@
-import random
-import datetime as dt
-import matplotlib.dates as mdates
-import math
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import datetime as dt
 from matplotlib.collections import PolyCollection
+
+import random
+import math
+
 import numpy as np
 import pandas as pd
-from scipy import optimize, stats
+# from scipy import optimize, stats
+
 from dataclasses import dataclass
 import itertools
 from copy import copy
@@ -55,12 +58,16 @@ class QueueingSystemPoisson():
         class Interval:
             start: float
             delta: float
+            has_left: bool
 
+            def __post_init__(self):
+                if self.has_left == None:
+                    self.has_left = False
             def end(self) -> float:
                 return self.start + self.delta
 
         arrival = np.cumsum(T)
-        core_intervals = [Interval(arrival[i], tau[i]) for i in range(N)]
+        core_intervals = [Interval(arrival[i], tau[i], False) for i in range(N)]
         self.core_intervals = core_intervals
         states = [[] for i in range(self.states_count)] # array of arrays of intervals
         left_system = []
@@ -76,6 +83,7 @@ class QueueingSystemPoisson():
                     k = i
                     break
             if k == -1:
+                core_interval.has_left = True
                 left_system.append(core_interval)
                 continue
             
@@ -109,100 +117,56 @@ class QueueingSystemPoisson():
         self.states = states
         self.left_system = left_system
 
-#     def показать(self):
-#         # generate main timeline
-#         start_date = np.datetime64(2023, 11, 15, 17, 0)
-#         curr_date = start_date
-#         timeline_main = []
-#         for i, time_delta in enumerate(self.поток_заяв):
-#             timeline_main.append(curr_date)
-#             curr_date += np.timedelta64(time_delta, 'm')
+    def show(self):
+        DATE_START = dt.datetime(2023, 11, 15, 17, 0)
+        timelines = []
+
+        # generate arrival timeline
+        date_curr = DATE_START
+        timeline = []
+        for interval in self.core_intervals:
+            interval_start = DATE_START + dt.timedelta(minutes=interval.start)
+            interval_end = DATE_START + dt.timedelta(seconds=interval.start+10)
+            timeline.append((interval_start, interval_end))
+        timelines.append(timeline)
         
-#         # generate state timelines
-#         timeline_state_array = []
-#         state_count = self.n + self.m + 1
-#         for j in range(state_count):
-#             timeline_state = []
-#             for i, time_delta in enumerate(self.поток_заяв):
-#                 curr_date += np.timedelta64(time_delta, 'm')
-#                 timeline_state.append(curr_date)
-#         curr_date = start_date
-#         data = []
-#         for i in range(self.n + self.m + 1):
-#         data.append((start, end, 'S{}'.format(i)))
-#         data = [    (dt.datetime(2018, 7, 17, 0, 15), dt.datetime(2018, 7, 17, 0, 30), 'sleep'),
-#                     (dt.datetime(2018, 7, 17, 0, 30), dt.datetime(2018, 7, 17, 0, 45), 'eat'),
-#                     (dt.datetime(2018, 7, 17, 0, 45), dt.datetime(2018, 7, 17, 1, 0), 'work'),
-#                     (dt.datetime(2018, 7, 17, 1, 0), dt.datetime(2018, 7, 17, 1, 30), 'sleep'),
-#                     (dt.datetime(2018, 7, 17, 1, 15), dt.datetime(2018, 7, 17, 1, 30), 'eat'), 
-#                     (dt.datetime(2018, 7, 17, 1, 30), dt.datetime(2018, 7, 17, 1, 45), 'work')
-#                 ]
+        # generate state timelines
+        for state in self.states:
+            timeline_state = []
+            for interval in state:
+                interval_start = DATE_START + dt.timedelta(minutes=interval.start)
+                interval_end = DATE_START + dt.timedelta(minutes=interval.end())
+                timeline_state.append((interval_start, interval_end))
+            timelines.append(timeline_state)
+        
+        TIMELINES_COUNT = self.n + self.m + 1
+        cm = plt.cm.get_cmap('hsv', TIMELINES_COUNT) 
+        colormapping = [cm(1.*i/TIMELINES_COUNT) for i in range(TIMELINES_COUNT)]
 
-#         cats = {"sleep" : 1, "eat" : 2, "work" : 3}
-#         colormapping = {"sleep" : "C0", "eat" : "C1", "work" : "C2"}
+        verts = []
+        colors = []
+        for i, ts in enumerate(timelines):
+            k = i+1
+            for interval in ts:
+                v =  [(mdates.date2num(interval[0]), k-.4),
+                    (mdates.date2num(interval[0]), k+.4),
+                    (mdates.date2num(interval[1]), k+.4),
+                    (mdates.date2num(interval[1]), k-.4),
+                    (mdates.date2num(interval[0]), k-.4)]
+                colors.append(colormapping[i])
+                verts.append(v)
 
-#         verts = []
-#         colors = []
-#         for d in data:
-#             v =  [(mdates.date2num(d[0]), cats[d[2]]-.4),
-#                 (mdates.date2num(d[0]), cats[d[2]]+.4),
-#                 (mdates.date2num(d[1]), cats[d[2]]+.4),
-#                 (mdates.date2num(d[1]), cats[d[2]]-.4),
-#                 (mdates.date2num(d[0]), cats[d[2]]-.4)]
-#             verts.append(v)
-#             colors.append(colormapping[d[2]])
+        bars = PolyCollection(verts, facecolors=colors)
 
-#         bars = PolyCollection(verts, facecolors=colors)
+        fig, ax = plt.subplots()
+        ax.add_collection(bars)
+        ax.autoscale()
+        loc = mdates.MinuteLocator(byminute=[0,15,30,45])
+        ax.xaxis.set_major_locator(loc)
+        ax.xaxis.set_major_formatter(mdates.AutoDateFormatter(loc))
 
-#         fig, ax = plt.subplots()
-#         ax.add_collection(bars)
-#         ax.autoscale()
-#         loc = mdates.MinuteLocator(byminute=[0,15,30,45])
-#         ax.xaxis.set_major_locator(loc)
-#         ax.xaxis.set_major_formatter(mdates.AutoDateFormatter(loc))
-
-#         ax.set_yticks([1,2,3])
-#         ax.set_yticklabels(["sleep", "eat", "work"])
-#     plt.show()
-#     cats = {'S1'}
-#     print(self.поток_заяв)
-#     print(self.поток_обсл)
-# data = []
-# first_date = np.datetime64(2023, 7, 15, 17, 0)
-# for date 
-# for i in range(self.n + self.m + 1):
-#     data.append((start, end, 'S{}'.format(i)))
-# data = [    (dt.datetime(2018, 7, 17, 0, 15), dt.datetime(2018, 7, 17, 0, 30), 'sleep'),
-#             (dt.datetime(2018, 7, 17, 0, 30), dt.datetime(2018, 7, 17, 0, 45), 'eat'),
-#             (dt.datetime(2018, 7, 17, 0, 45), dt.datetime(2018, 7, 17, 1, 0), 'work'),
-#             (dt.datetime(2018, 7, 17, 1, 0), dt.datetime(2018, 7, 17, 1, 30), 'sleep'),
-#             (dt.datetime(2018, 7, 17, 1, 15), dt.datetime(2018, 7, 17, 1, 30), 'eat'), 
-#             (dt.datetime(2018, 7, 17, 1, 30), dt.datetime(2018, 7, 17, 1, 45), 'work')
-#         ]
-
-# cats = {"sleep" : 1, "eat" : 2, "work" : 3}
-# colormapping = {"sleep" : "C0", "eat" : "C1", "work" : "C2"}
-
-# verts = []
-# colors = []
-# for d in data:
-#     v =  [(mdates.date2num(d[0]), cats[d[2]]-.4),
-#           (mdates.date2num(d[0]), cats[d[2]]+.4),
-#           (mdates.date2num(d[1]), cats[d[2]]+.4),
-#           (mdates.date2num(d[1]), cats[d[2]]-.4),
-#           (mdates.date2num(d[0]), cats[d[2]]-.4)]
-#     verts.append(v)
-#     colors.append(colormapping[d[2]])
-
-# bars = PolyCollection(verts, facecolors=colors)
-
-# fig, ax = plt.subplots()
-# ax.add_collection(bars)
-# ax.autoscale()
-# loc = mdates.MinuteLocator(byminute=[0,15,30,45])
-# ax.xaxis.set_major_locator(loc)
-# ax.xaxis.set_major_formatter(mdates.AutoDateFormatter(loc))
-
-# ax.set_yticks([1,2,3])
-# ax.set_yticklabels(["sleep", "eat", "work"])
-# plt.show()
+        ax.set_yticks([i for i in reversed(range(TIMELINES_COUNT))])
+        labels = ["Заявки"]
+        labels.extend([f"Канал {i}" if i < self.n else f"Место очереди {i - self.n}" for i in range(TIMELINES_COUNT-1)])
+        ax.set_yticklabels(labels)
+        plt.show()
